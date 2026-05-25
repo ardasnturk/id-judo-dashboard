@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ID-Judo Klassifikationsdashboard</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body style="margin:0;padding:0;background:#f0f2f5;">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState } = React;
+
+    const sections = [
+      {
+        title: "A. Motorische Fähigkeiten",
+        questions: [
+          ["Kann der Judoka sicher vorwärts und rückwärts fallen?", 5],
+          ["Kann der Judoka beidseitig eine Wurftechnik ausführen?", 4],
+          ["Kann der Judoka Gleichgewichtsstörungen kontrollieren?", 5],
+          ["Kann der Judoka eigenständig Griffkampf durchführen?", 4],
+          ["Kann der Judoka mindestens 3 Techniken korrekt demonstrieren?", 4],
+          ["Kann der Judoka Übergänge Stand/Boden selbstständig ausführen?", 3],
+          ["Kann der Judoka eine Bodentechnik länger als 10 Sekunden stabil halten?", 3],
+          ["Kann der Judoka Bewegungsaufgaben nach einmaliger Erklärung umsetzen?", 4],
+          ["Kann der Judoka Richtung und Distanz im Kampf kontrollieren?", 4],
+          ["Kann der Judoka über 2 Minuten konzentriert kämpfen/trainieren?", 3],
+        ],
+      },
+      {
+        title: "B. Kognitive und regelbezogene Fähigkeiten",
+        questions: [
+          ["Versteht der Judoka die Kommandos Hajime und Mate?", 5],
+          ["Erkennt der Judoka Kampfbeginn und Kampfende selbstständig?", 4],
+          ["Kennt der Judoka die Wettkampffläche und deren Grenzen?", 3],
+          ["Kann der Judoka verbotene Handlungen vermeiden?", 5],
+          ["Versteht der Judoka Sieg und Niederlage im Wettkampf?", 3],
+          ["Kann der Judoka taktische Anweisungen umsetzen?", 4],
+          ["Kann der Judoka Kampfsituationen antizipieren?", 4],
+          ["Erkennt der Judoka Haltegriffe oder Wertungen?", 3],
+          ["Kann der Judoka sich selbstständig aufwärmen?", 2],
+          ["Kann der Judoka eigenständig zum Kampf aufgerufen werden?", 2],
+        ],
+      },
+      {
+        title: "C. Soziale und adaptive Fähigkeiten",
+        questions: [
+          ["Kann der Judoka selbstständig mit Partnern trainieren?", 4],
+          ["Hält der Judoka Sicherheitsregeln zuverlässig ein?", 5],
+          ["Kann der Judoka Frustration kontrollieren?", 4],
+          ["Kann der Judoka nach Niederlagen angemessen reagieren?", 3],
+          ["Kann der Judoka sich in Gruppenstrukturen orientieren?", 3],
+          ["Benötigt der Judoka keine dauerhafte 1:1-Betreuung?", 5],
+          ["Kann der Judoka selbstständig auf die Matte gehen?", 3],
+          ["Kann der Judoka auf unbekannte Gegner angemessen reagieren?", 4],
+          ["Kann der Judoka soziale Distanzregeln im Wettkampf einhalten?", 2],
+          ["Kann der Judoka mehrere Kämpfe an einem Tag bewältigen?", 3],
+        ],
+      },
+    ];
+
+    const MAX_SCORE = 114;
+
+    function App() {
+      const allQuestions = sections.flatMap((s) => s.questions);
+      const [answers, setAnswers] = useState(Array(allQuestions.length).fill(false));
+      const [result, setResult] = useState(null);
+
+      let globalIdx = 0;
+      const sectionStartIdx = sections.map((s) => {
+        const idx = globalIdx;
+        globalIdx += s.questions.length;
+        return idx;
+      });
+
+      const toggle = (idx, val) => {
+        setAnswers((prev) => {
+          const next = [...prev];
+          next[idx] = val;
+          return next;
+        });
+        setResult(null);
+      };
+
+      const calculate = () => {
+        const score = allQuestions.reduce(
+          (sum, q, i) => sum + (answers[i] ? q[1] : 0),
+          0
+        );
+        let klasse, color, beschreibung;
+        if (score >= 85) {
+          klasse = "WK 1"; color = "green"; beschreibung = "Hohe Wettkampffähigkeit";
+        } else if (score >= 50) {
+          klasse = "WK 2"; color = "yellow"; beschreibung = "Eingeschränkte Wettkampffähigkeit";
+        } else {
+          klasse = "WK 3"; color = "red"; beschreibung = "Hoher Unterstützungsbedarf";
+        }
+        setResult({ score, klasse, color, beschreibung });
+      };
+
+      const resultColors = {
+        green: { bg: "#d4f7d0", border: "#4caf50", text: "#1b5e20" },
+        yellow: { bg: "#fff8cc", border: "#f9a825", text: "#6d4c00" },
+        red: { bg: "#ffd6d6", border: "#e53935", text: "#7f0000" },
+      };
+
+      return (
+        <div style={{ fontFamily: "'Segoe UI', Arial, sans-serif", background: "#f0f2f5", minHeight: "100vh", padding: "20px 16px", maxWidth: 640, margin: "0 auto" }}>
+          <div style={{ marginBottom: 24 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1a237e", margin: 0 }}>ID-Judo Klassifikationsdashboard</h1>
+            <p style={{ color: "#555", fontSize: 14, marginTop: 8 }}>
+              Bitte beantworten Sie jede Fragestellung mit <b>Ja</b> oder <b>Nein</b>.
+            </p>
+          </div>
+
+          {sections.map((section, sIdx) => {
+            const startIdx = sectionStartIdx[sIdx];
+            return (
+              <div key={sIdx} style={{ background: "white", borderRadius: 12, padding: "18px 16px", marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>
+                <h2 style={{ fontSize: 15, fontWeight: 700, color: "#1565c0", marginTop: 0, marginBottom: 14, borderBottom: "2px solid #e3eaf5", paddingBottom: 8 }}>
+                  {section.title}
+                </h2>
+                {section.questions.map((q, qIdx) => {
+                  const idx = startIdx + qIdx;
+                  const isJa = answers[idx] === true;
+                  return (
+                    <div key={qIdx} style={{ borderBottom: qIdx < section.questions.length - 1 ? "1px solid #f0f0f0" : "none", padding: "10px 0" }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "#222", marginBottom: 4 }}>
+                        {startIdx + qIdx + 1}. {q[0]}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#999", marginBottom: 8 }}>Gewichtung: {q[1]} Punkte</div>
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <button
+                          onClick={() => toggle(idx, true)}
+                          style={{
+                            padding: "6px 22px", borderRadius: 20, border: "2px solid",
+                            borderColor: isJa ? "#43a047" : "#ccc",
+                            background: isJa ? "#43a047" : "white",
+                            color: isJa ? "white" : "#555",
+                            fontWeight: 600, fontSize: 13, cursor: "pointer", transition: "all 0.15s"
+                          }}
+                        >
+                          Ja
+                        </button>
+                        <button
+                          onClick={() => toggle(idx, false)}
+                          style={{
+                            padding: "6px 22px", borderRadius: 20, border: "2px solid",
+                            borderColor: !isJa ? "#e53935" : "#ccc",
+                            background: !isJa ? "#e53935" : "white",
+                            color: !isJa ? "white" : "#555",
+                            fontWeight: 600, fontSize: 13, cursor: "pointer", transition: "all 0.15s"
+                          }}
+                        >
+                          Nein
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+
+          <button
+            onClick={calculate}
+            style={{
+              width: "100%", padding: "16px", background: "#1565c0", color: "white",
+              border: "none", borderRadius: 12, fontSize: 17, fontWeight: 700,
+              cursor: "pointer", marginTop: 8, marginBottom: 20,
+              boxShadow: "0 4px 12px rgba(21,101,192,0.35)"
+            }}
+          >
+            Klassifikation berechnen
+          </button>
+
+          {result && (() => {
+            const c = resultColors[result.color];
+            const pct = Math.round((result.score / MAX_SCORE) * 100);
+            return (
+              <div style={{ background: c.bg, border: `2px solid ${c.border}`, borderRadius: 14, padding: 24, textAlign: "center", marginBottom: 32 }}>
+                <div style={{ fontSize: 32, fontWeight: 800, color: c.text }}>{result.klasse}</div>
+                <div style={{ fontSize: 16, color: c.text, marginTop: 4 }}>{result.beschreibung}</div>
+                <div style={{ margin: "16px 0 8px", background: "#00000015", borderRadius: 99, height: 10, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${pct}%`, background: c.border, borderRadius: 99, transition: "width 0.6s ease" }} />
+                </div>
+                <div style={{ fontSize: 14, color: c.text, fontWeight: 600 }}>{result.score} / {MAX_SCORE} Punkte ({pct}%)</div>
+              </div>
+            );
+          })()}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
