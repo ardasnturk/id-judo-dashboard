@@ -9,11 +9,12 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
-    *:focus-visible {
-      outline: 3px solid #f57c00;
-      outline-offset: 3px;
-      border-radius: 4px;
+    *:focus-visible { outline: 3px solid #f57c00; outline-offset: 3px; border-radius: 4px; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
+    .slide-in { animation: slideIn 0.28s ease; }
   </style>
 </head>
 <body style="margin:0;padding:0;">
@@ -35,6 +36,11 @@
         fontSmaller: "Schrift verkleinern",
         fontLarger: "Schrift vergrößern",
         langLabel: "Sprache",
+        readingBtn: "Lesemodus",
+        qLabel: "Frage", ofLabel: "von",
+        repeatBtn: "Wiederholen",
+        exitBtn: "Beenden",
+        backBtn: "Zum Formular",
         sections: [
           {
             title: "A. Motorische Fähigkeiten",
@@ -96,6 +102,11 @@
         fontSmaller: "Decrease font size",
         fontLarger: "Increase font size",
         langLabel: "Language",
+        readingBtn: "Reading Mode",
+        qLabel: "Question", ofLabel: "of",
+        repeatBtn: "Repeat",
+        exitBtn: "Exit",
+        backBtn: "Back to Form",
         sections: [
           {
             title: "A. Motor Skills",
@@ -157,6 +168,11 @@
         fontSmaller: "Yazıyı küçült",
         fontLarger: "Yazıyı büyüt",
         langLabel: "Dil",
+        readingBtn: "Okuma Modu",
+        qLabel: "Soru", ofLabel: "/",
+        repeatBtn: "Tekrar",
+        exitBtn: "Çıkış",
+        backBtn: "Forma Dön",
         sections: [
           {
             title: "A. Motor Beceriler",
@@ -211,61 +227,121 @@
     const FONT_SIZES = [13, 15, 17, 20];
 
     function App() {
-      const [lang, setLang] = useState("de");
-      const [hc, setHc] = useState(false);
-      const [fsIdx, setFsIdx] = useState(1);
+      const [lang, setLang]       = useState("de");
+      const [hc, setHc]           = useState(false);
+      const [fsIdx, setFsIdx]     = useState(1);
       const [answers, setAnswers] = useState(Array(30).fill(false));
-      const [result, setResult] = useState(null);
+      const [result, setResult]   = useState(null);
+      const [rm, setRm]           = useState(false);
+      const [rmIdx, setRmIdx]     = useState(0);
+      const [rmDone, setRmDone]   = useState(false);
 
-      const t = T[lang];
-      const fs = FONT_SIZES[fsIdx];
+      const t      = T[lang];
+      const fs     = FONT_SIZES[fsIdx];
+      const ttsLang = lang === "de" ? "de-DE" : lang === "en" ? "en-US" : "tr-TR";
+      const allQ   = t.sections.flatMap(s => s.questions);
+
+      let gi = 0;
+      const secStart = t.sections.map(s => { const i = gi; gi += s.questions.length; return i; });
 
       useEffect(() => {
         document.documentElement.lang = lang;
         document.body.style.background = hc ? "#000" : "#f0f2f5";
       }, [lang, hc]);
 
-      let gi = 0;
-      const secStart = t.sections.map((s) => { const i = gi; gi += s.questions.length; return i; });
-      const allQ = t.sections.flatMap((s) => s.questions);
+      useEffect(() => {
+        if (rm && !rmDone) speak(allQ[rmIdx][0]);
+      }, [rmIdx, rm]);
+
+      useEffect(() => {
+        if (rm && rmDone && result) speak(buildResultTts(lang, result));
+      }, [rmDone, result]);
+
+      const speak = (text) => {
+        if (!window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+        const utt = new SpeechSynthesisUtterance(text);
+        utt.lang = ttsLang;
+        utt.rate = 0.85;
+        window.speechSynthesis.speak(utt);
+      };
+
+      const buildResultTts = (l, r) => {
+        if (l === "de") return `Ergebnis: ${r.wk}. ${r.desc}. Punktzahl: ${r.score} von ${MAX_SCORE}.`;
+        if (l === "en") return `Result: ${r.wk}. ${r.desc}. Score: ${r.score} out of ${MAX_SCORE}.`;
+        return `Sonuç: ${r.wk}. ${r.desc}. Puan: ${r.score}, ${MAX_SCORE} üzerinden.`;
+      };
+
+      const getSection = (idx) => {
+        let cum = 0;
+        for (const s of t.sections) { cum += s.questions.length; if (idx < cum) return s; }
+        return t.sections[t.sections.length - 1];
+      };
+
+      const calcResult = (ans) => {
+        const score = allQ.reduce((sum, q, i) => sum + (ans[i] ? q[1] : 0), 0);
+        const color = score >= 85 ? "green" : score >= 50 ? "yellow" : "red";
+        const wk    = color === "green" ? "WK 1" : color === "yellow" ? "WK 2" : "WK 3";
+        const desc  = color === "green" ? t.wk1desc : color === "yellow" ? t.wk2desc : t.wk3desc;
+        return { score, wk, color, desc };
+      };
+
+      const startRm = () => {
+        window.speechSynthesis && window.speechSynthesis.cancel();
+        setAnswers(Array(30).fill(false));
+        setResult(null);
+        setRmIdx(0);
+        setRmDone(false);
+        setRm(true);
+      };
+
+      const exitRm = () => {
+        window.speechSynthesis && window.speechSynthesis.cancel();
+        setRm(false);
+        setRmDone(false);
+      };
+
+      const rmAnswer = (val) => {
+        const next = [...answers];
+        next[rmIdx] = val;
+        setAnswers(next);
+        if (rmIdx + 1 >= allQ.length) {
+          setResult(calcResult(next));
+          setRmDone(true);
+        } else {
+          setRmIdx(rmIdx + 1);
+        }
+      };
 
       const toggle = (idx, val) => {
-        setAnswers((prev) => { const n = [...prev]; n[idx] = val; return n; });
+        setAnswers(prev => { const n = [...prev]; n[idx] = val; return n; });
         setResult(null);
       };
-
-      const calculate = () => {
-        const score = allQ.reduce((sum, q, i) => sum + (answers[i] ? q[1] : 0), 0);
-        let wk, color;
-        if (score >= 85) { wk = "WK 1"; color = "green"; }
-        else if (score >= 50) { wk = "WK 2"; color = "yellow"; }
-        else { wk = "WK 3"; color = "red"; }
-        const desc = color === "green" ? t.wk1desc : color === "yellow" ? t.wk2desc : t.wk3desc;
-        setResult({ score, wk, color, desc });
-      };
-
+      const calculate = () => setResult(calcResult(answers));
       const onKey = (fn) => (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
 
       const c = {
-        pageBg:     hc ? "#000"   : "#f0f2f5",
-        cardBg:     hc ? "#111"   : "#fff",
-        cardShadow: hc ? "none"   : "0 2px 8px rgba(0,0,0,0.08)",
-        cardBorder: hc ? "1px solid #555" : "none",
-        title:      hc ? "#fff"   : "#1a237e",
-        section:    hc ? "#ffff00": "#1565c0",
-        secBorder:  hc ? "#555"   : "#e3eaf5",
-        text:       hc ? "#fff"   : "#222",
-        sub:        hc ? "#bbb"   : "#555",
-        meta:       hc ? "#999"   : "#999",
-        divider:    hc ? "#333"   : "#f0f0f0",
-        toolbarBg:  hc ? "#111"   : "#e8eaf6",
-        toolbarBdr: hc ? "#444"   : "#c5cae9",
-        inBg:       hc ? "#222"   : "#fff",
-        inBorder:   hc ? "#777"   : "#ccc",
-        inText:     hc ? "#fff"   : "#555",
-        jaOn:       hc ? "#00c853": "#43a047",
-        neinOn:     hc ? "#ff1744": "#e53935",
-        calcBtn:    hc ? "#1a73e8": "#1565c0",
+        pageBg:    hc ? "#000"    : "#f0f2f5",
+        cardBg:    hc ? "#111"    : "#fff",
+        cardShadow:hc ? "none"    : "0 2px 8px rgba(0,0,0,0.08)",
+        cardBorder:hc ? "1px solid #555" : "none",
+        title:     hc ? "#fff"    : "#1a237e",
+        section:   hc ? "#ffff00" : "#1565c0",
+        secBorder: hc ? "#555"    : "#e3eaf5",
+        text:      hc ? "#fff"    : "#222",
+        sub:       hc ? "#bbb"    : "#555",
+        meta:      hc ? "#999"    : "#999",
+        divider:   hc ? "#333"    : "#f0f0f0",
+        toolbarBg: hc ? "#111"    : "#e8eaf6",
+        toolbarBdr:hc ? "#444"    : "#c5cae9",
+        inBg:      hc ? "#222"    : "#fff",
+        inBorder:  hc ? "#777"    : "#ccc",
+        inText:    hc ? "#fff"    : "#555",
+        jaOn:      hc ? "#00c853" : "#43a047",
+        neinOn:    hc ? "#ff1744" : "#e53935",
+        calcBtn:   hc ? "#1a73e8" : "#1565c0",
+        rmJa:      hc ? "#00c853" : "#2e7d32",
+        rmNein:    hc ? "#ff1744" : "#c62828",
       };
 
       const resColors = {
@@ -274,36 +350,96 @@
         red:    hc ? { bg:"#330000", border:"#ff1744", text:"#ff8a80" } : { bg:"#ffd6d6", border:"#e53935", text:"#7f0000" },
       };
 
-      const btnBase = {
-        borderRadius: 8, border: "2px solid", fontWeight: 700,
-        fontSize: fs - 1, cursor: "pointer", padding: "5px 13px",
-      };
+      const btnBase = { borderRadius:8, border:"2px solid", fontWeight:700, fontSize:fs-1, cursor:"pointer", padding:"5px 13px" };
+
+      if (rm && !rmDone) {
+        const section = getSection(rmIdx);
+        const q = allQ[rmIdx];
+        const pct = Math.round((rmIdx / allQ.length) * 100);
+        return (
+          <div style={{ fontFamily:"'Segoe UI',Arial,sans-serif", background:c.pageBg, minHeight:"100vh", display:"flex", flexDirection:"column", fontSize:fs }}>
+            <div style={{ height:5, background:c.secBorder, flexShrink:0 }}>
+              <div style={{ height:"100%", width:`${pct}%`, background:"#1565c0", transition:"width 0.4s ease" }} />
+            </div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 16px", flexShrink:0 }}>
+              <button onClick={exitRm} onKeyDown={onKey(exitRm)} style={{ ...btnBase, borderColor:c.inBorder, background:c.inBg, color:c.text }}>← {t.exitBtn}</button>
+              <span style={{ fontSize:fs, fontWeight:700, color:c.text }}>{t.qLabel} {rmIdx + 1} {t.ofLabel} {allQ.length}</span>
+            </div>
+            <div style={{ flex:1, padding:"8px 16px 0", display:"flex", flexDirection:"column", gap:14 }}>
+              <div style={{ fontSize:fs-1, color:c.sub, fontWeight:600 }}>{section.title}</div>
+              <div key={rmIdx} className="slide-in" aria-live="polite" style={{ background:c.cardBg, borderRadius:18, padding:"28px 22px", fontSize:fs+5, fontWeight:700, color:c.text, lineHeight:1.55, minHeight:140, display:"flex", alignItems:"center", boxShadow:c.cardShadow, border:c.cardBorder }}>
+                {q[0]}
+              </div>
+              <button onClick={() => speak(q[0])} onKeyDown={onKey(() => speak(q[0]))} aria-label={t.repeatBtn} style={{ alignSelf:"center", padding:"9px 22px", borderRadius:22, border:`2px solid ${c.inBorder}`, background:c.inBg, color:c.text, fontWeight:600, fontSize:fs, cursor:"pointer" }}>
+                🔊 {t.repeatBtn}
+              </button>
+            </div>
+            <div style={{ display:"flex", gap:14, padding:"20px 16px 44px", flexShrink:0 }}>
+              <button onClick={() => rmAnswer(true)} onKeyDown={onKey(() => rmAnswer(true))} aria-label={t.ja} style={{ flex:1, padding:"32px 0", borderRadius:18, border:"none", background:c.rmJa, color:"#fff", fontSize:fs+8, fontWeight:800, cursor:"pointer", boxShadow:"0 4px 16px rgba(0,0,0,0.2)" }}>
+                ✓ {t.ja}
+              </button>
+              <button onClick={() => rmAnswer(false)} onKeyDown={onKey(() => rmAnswer(false))} aria-label={t.nein} style={{ flex:1, padding:"32px 0", borderRadius:18, border:"none", background:c.rmNein, color:"#fff", fontSize:fs+8, fontWeight:800, cursor:"pointer", boxShadow:"0 4px 16px rgba(0,0,0,0.2)" }}>
+                ✗ {t.nein}
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      if (rm && rmDone && result) {
+        const rc  = resColors[result.color];
+        const pct = Math.round((result.score / MAX_SCORE) * 100);
+        const resultTts = buildResultTts(lang, result);
+        return (
+          <div style={{ fontFamily:"'Segoe UI',Arial,sans-serif", background:c.pageBg, minHeight:"100vh", display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center", padding:"24px 16px", fontSize:fs }}>
+            <div key="rm-result" className="slide-in" style={{ background:rc.bg, border:`3px solid ${rc.border}`, borderRadius:22, padding:32, textAlign:"center", width:"100%", maxWidth:480 }}>
+              <img src="IMG_4224.png" alt="ID-Judo Logo" style={{ height:52, marginBottom:16 }} />
+              <div style={{ fontSize:fs+24, fontWeight:800, color:rc.text }}>{result.wk}</div>
+              <div style={{ fontSize:fs+4, color:rc.text, marginTop:8, marginBottom:20 }}>{result.desc}</div>
+              <div role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${result.score} / ${MAX_SCORE}`} style={{ background:"#00000015", borderRadius:99, height:12, overflow:"hidden", marginBottom:14 }}>
+                <div style={{ height:"100%", width:`${pct}%`, background:rc.border, borderRadius:99, transition:"width 0.8s ease" }} />
+              </div>
+              <div style={{ fontSize:fs+3, color:rc.text, fontWeight:700, marginBottom:28 }}>{result.score} / {MAX_SCORE} {t.points} ({pct}%)</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                <button onClick={() => speak(resultTts)} onKeyDown={onKey(() => speak(resultTts))} style={{ padding:"13px", borderRadius:12, border:`2px solid ${rc.border}`, background:"transparent", color:rc.text, fontWeight:700, fontSize:fs+1, cursor:"pointer" }}>
+                  🔊 {t.repeatBtn}
+                </button>
+                <button onClick={exitRm} onKeyDown={onKey(exitRm)} style={{ padding:"16px", borderRadius:12, border:"none", background:rc.border, color:"#fff", fontWeight:700, fontSize:fs+2, cursor:"pointer" }}>
+                  {t.backBtn}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
 
       return (
-        <div style={{ fontFamily: "'Segoe UI', Arial, sans-serif", background: c.pageBg, minHeight: "100vh", padding: "20px 16px", maxWidth: 640, margin: "0 auto", fontSize: fs }}>
-
+        <div style={{ fontFamily:"'Segoe UI',Arial,sans-serif", background:c.pageBg, minHeight:"100vh", padding:"20px 16px", maxWidth:640, margin:"0 auto", fontSize:fs }}>
           <div role="toolbar" aria-label={`${t.langLabel} / ${t.contrastLabel}`} style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap", alignItems:"center", background:c.toolbarBg, borderRadius:10, padding:"8px 12px", border:`1px solid ${c.toolbarBdr}` }}>
             <div role="group" aria-label={t.langLabel} style={{ display:"flex", gap:4 }}>
-              {["de","en","tr"].map((l) => (
-                <button key={l} onClick={() => { setLang(l); setResult(null); }} onKeyDown={onKey(() => { setLang(l); setResult(null); })} aria-pressed={lang === l} aria-label={`${t.langLabel}: ${l.toUpperCase()}`} style={{ ...btnBase, borderColor: lang===l ? c.section : c.inBorder, background: lang===l ? c.section : c.inBg, color: lang===l ? "#fff" : c.text, textTransform:"uppercase" }}>{l.toUpperCase()}</button>
+              {["de","en","tr"].map(l => (
+                <button key={l} onClick={() => { setLang(l); setResult(null); }} onKeyDown={onKey(() => { setLang(l); setResult(null); })} aria-pressed={lang===l} aria-label={`${t.langLabel}: ${l.toUpperCase()}`} style={{ ...btnBase, borderColor:lang===l?c.section:c.inBorder, background:lang===l?c.section:c.inBg, color:lang===l?"#fff":c.text, textTransform:"uppercase" }}>{l.toUpperCase()}</button>
               ))}
             </div>
             <div style={{ flex:1 }} />
             <div role="group" aria-label="Font size" style={{ display:"flex", gap:4 }}>
-              <button onClick={() => setFsIdx((i) => Math.max(0, i-1))} onKeyDown={onKey(() => setFsIdx((i) => Math.max(0, i-1)))} aria-label={t.fontSmaller} disabled={fsIdx === 0} style={{ ...btnBase, borderColor:c.inBorder, background:c.inBg, color:c.inText, opacity: fsIdx===0 ? 0.4 : 1, cursor: fsIdx===0 ? "default" : "pointer" }}>A−</button>
-              <button onClick={() => setFsIdx((i) => Math.min(FONT_SIZES.length-1, i+1))} onKeyDown={onKey(() => setFsIdx((i) => Math.min(FONT_SIZES.length-1, i+1)))} aria-label={t.fontLarger} disabled={fsIdx === FONT_SIZES.length-1} style={{ ...btnBase, borderColor:c.inBorder, background:c.inBg, color:c.inText, opacity: fsIdx===FONT_SIZES.length-1 ? 0.4 : 1, cursor: fsIdx===FONT_SIZES.length-1 ? "default" : "pointer" }}>A+</button>
+              <button onClick={() => setFsIdx(i => Math.max(0,i-1))} onKeyDown={onKey(() => setFsIdx(i => Math.max(0,i-1)))} aria-label={t.fontSmaller} disabled={fsIdx===0} style={{ ...btnBase, borderColor:c.inBorder, background:c.inBg, color:c.inText, opacity:fsIdx===0?0.4:1, cursor:fsIdx===0?"default":"pointer" }}>A−</button>
+              <button onClick={() => setFsIdx(i => Math.min(FONT_SIZES.length-1,i+1))} onKeyDown={onKey(() => setFsIdx(i => Math.min(FONT_SIZES.length-1,i+1)))} aria-label={t.fontLarger} disabled={fsIdx===FONT_SIZES.length-1} style={{ ...btnBase, borderColor:c.inBorder, background:c.inBg, color:c.inText, opacity:fsIdx===FONT_SIZES.length-1?0.4:1, cursor:fsIdx===FONT_SIZES.length-1?"default":"pointer" }}>A+</button>
             </div>
-            <button onClick={() => setHc((v) => !v)} onKeyDown={onKey(() => setHc((v) => !v))} aria-pressed={hc} aria-label={`${t.contrastLabel}: ${hc ? "on" : "off"}`} style={{ ...btnBase, borderColor: hc ? "#ffff00" : c.inBorder, background: hc ? "#000" : c.inBg, color: hc ? "#ffff00" : c.inText }}>{hc ? "◑" : "○"} {t.contrastLabel}</button>
+            <button onClick={() => setHc(v => !v)} onKeyDown={onKey(() => setHc(v => !v))} aria-pressed={hc} aria-label={`${t.contrastLabel}: ${hc?"on":"off"}`} style={{ ...btnBase, borderColor:hc?"#ffff00":c.inBorder, background:hc?"#000":c.inBg, color:hc?"#ffff00":c.inText }}>{hc?"◑":"○"} {t.contrastLabel}</button>
+            <div style={{ width:"100%", marginTop:4 }}>
+              <button onClick={startRm} onKeyDown={onKey(startRm)} style={{ width:"100%", padding:"9px", borderRadius:8, border:`2px solid ${c.section}`, background:c.section, color:"#fff", fontWeight:700, fontSize:fs, cursor:"pointer" }}>
+                📖 {t.readingBtn}
+              </button>
+            </div>
           </div>
-
           <header style={{ marginBottom:24, display:"flex", alignItems:"center", gap:14 }}>
             <img src="IMG_4224.png" alt="ID-Judo Logo" style={{ height:56, width:"auto" }} />
             <div>
-              <h1 style={{ fontSize: fs+7, fontWeight:700, color:c.title, margin:0 }}>{t.title}</h1>
+              <h1 style={{ fontSize:fs+7, fontWeight:700, color:c.title, margin:0 }}>{t.title}</h1>
               <p style={{ color:c.sub, fontSize:fs-1, marginTop:4, marginBottom:0 }}>{t.subtitle}</p>
             </div>
           </header>
-
           <main>
             {t.sections.map((section, sIdx) => {
               const startIdx = secStart[sIdx];
@@ -315,12 +451,12 @@
                     const isJa = answers[idx];
                     const qId = `q-${idx}`;
                     return (
-                      <div key={qIdx} style={{ borderBottom: qIdx < section.questions.length-1 ? `1px solid ${c.divider}` : "none", padding:"10px 0" }}>
-                        <div id={qId} style={{ fontSize:fs, fontWeight:600, color:c.text, marginBottom:4 }}>{startIdx + qIdx + 1}. {q[0]}</div>
+                      <div key={qIdx} style={{ borderBottom:qIdx<section.questions.length-1?`1px solid ${c.divider}`:"none", padding:"10px 0" }}>
+                        <div id={qId} style={{ fontSize:fs, fontWeight:600, color:c.text, marginBottom:4 }}>{startIdx+qIdx+1}. {q[0]}</div>
                         <div style={{ fontSize:fs-3, color:c.meta, marginBottom:8 }}>{t.weight}: {q[1]} {t.points}</div>
                         <div role="group" aria-labelledby={qId} style={{ display:"flex", gap:10 }}>
-                          <button onClick={() => toggle(idx, true)} onKeyDown={onKey(() => toggle(idx, true))} aria-pressed={isJa} style={{ padding:"6px 22px", borderRadius:20, border:"2px solid", borderColor: isJa ? c.jaOn : c.inBorder, background: isJa ? c.jaOn : c.inBg, color: isJa ? "#fff" : c.inText, fontWeight:600, fontSize:fs-1, cursor:"pointer", transition:"all 0.15s" }}>{t.ja}</button>
-                          <button onClick={() => toggle(idx, false)} onKeyDown={onKey(() => toggle(idx, false))} aria-pressed={!isJa} style={{ padding:"6px 22px", borderRadius:20, border:"2px solid", borderColor: !isJa ? c.neinOn : c.inBorder, background: !isJa ? c.neinOn : c.inBg, color: !isJa ? "#fff" : c.inText, fontWeight:600, fontSize:fs-1, cursor:"pointer", transition:"all 0.15s" }}>{t.nein}</button>
+                          <button onClick={() => toggle(idx,true)} onKeyDown={onKey(() => toggle(idx,true))} aria-pressed={isJa} style={{ padding:"6px 22px", borderRadius:20, border:"2px solid", borderColor:isJa?c.jaOn:c.inBorder, background:isJa?c.jaOn:c.inBg, color:isJa?"#fff":c.inText, fontWeight:600, fontSize:fs-1, cursor:"pointer", transition:"all 0.15s" }}>{t.ja}</button>
+                          <button onClick={() => toggle(idx,false)} onKeyDown={onKey(() => toggle(idx,false))} aria-pressed={!isJa} style={{ padding:"6px 22px", borderRadius:20, border:"2px solid", borderColor:!isJa?c.neinOn:c.inBorder, background:!isJa?c.neinOn:c.inBg, color:!isJa?"#fff":c.inText, fontWeight:600, fontSize:fs-1, cursor:"pointer", transition:"all 0.15s" }}>{t.nein}</button>
                         </div>
                       </div>
                     );
@@ -329,12 +465,10 @@
               );
             })}
           </main>
-
-          <button onClick={calculate} onKeyDown={onKey(calculate)} style={{ width:"100%", padding:"16px", background:c.calcBtn, color:"#fff", border: hc ? "2px solid #fff" : "none", borderRadius:12, fontSize:fs+2, fontWeight:700, cursor:"pointer", marginTop:8, marginBottom:20, boxShadow: hc ? "none" : "0 4px 12px rgba(21,101,192,0.35)" }}>{t.calculate}</button>
-
+          <button onClick={calculate} onKeyDown={onKey(calculate)} style={{ width:"100%", padding:"16px", background:c.calcBtn, color:"#fff", border:hc?"2px solid #fff":"none", borderRadius:12, fontSize:fs+2, fontWeight:700, cursor:"pointer", marginTop:8, marginBottom:20, boxShadow:hc?"none":"0 4px 12px rgba(21,101,192,0.35)" }}>{t.calculate}</button>
           <div aria-live="polite" aria-atomic="true">
             {result && (() => {
-              const rc = resColors[result.color];
+              const rc  = resColors[result.color];
               const pct = Math.round((result.score / MAX_SCORE) * 100);
               return (
                 <div style={{ background:rc.bg, border:`2px solid ${rc.border}`, borderRadius:14, padding:24, textAlign:"center", marginBottom:32 }}>
@@ -348,7 +482,6 @@
               );
             })()}
           </div>
-
         </div>
       );
     }
